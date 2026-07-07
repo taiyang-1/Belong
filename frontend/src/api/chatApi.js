@@ -14,3 +14,11 @@ export function sendMessage({ conversationId = '', message, profileContext = '',
 export function fetchChatMessages(limit = 20) {
   return http.get('/api/chat/messages', { params: { limit } }).then((res) => res.data)
 }
+
+export function fetchChatConversations(limit = 20) {
+  return http.get('/api/chat/conversations', { params: { limit } }).then((res) => res.data)
+}
+
+export function fetchConversationMessages(conversationId) {
+  return http.get(`/api/chat/conversations/${conversationId}/messages`).then((res) => res.data)
+}

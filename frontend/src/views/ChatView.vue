@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
 import { PlusCircle, Send, MessageSquare } from '@lucide/vue'
-import { fetchChatMessages, sendMessage } from '../api/chatApi.js'
+import { fetchChatConversations, fetchChatMessages, fetchConversationMessages, sendMessage } from '../api/chatApi.js'
 import { normalizeResult } from '../utils/normalizeResult.js'
 import StatusMessage from '../components/common/StatusMessage.vue'
 
@@ -12,6 +12,7 @@ const loading = ref(false)
 const historyLoading = ref(false)
 const error = ref('')
 const messages = ref([])
+const conversations = ref([])
 const conversationId = ref(createConversationId())
 const composerRef = ref(null)
 
@@ -25,8 +26,18 @@ async function loadLatestMessages() {
   historyLoading.value = true
   error.value = ''
   try {
-    const data = await fetchChatMessages(20)
-    messages.value = data.map(toViewMessage)
+    const [conversationData, messageData] = await Promise.all([
+      fetchChatConversations(20),
+      fetchChatMessages(20),
+    ])
+    conversations.value = conversationData.map(toConversationSummary)
+    if (conversations.value.length) {
+      conversationId.value = conversations.value[0].conversationId
+      const activeMessages = await fetchConversationMessages(conversationId.value)
+      messages.value = activeMessages.map(toViewMessage)
+    } else {
+      messages.value = messageData.map(toViewMessage)
+    }
     await nextTick()
     scrollToBottom()
   } catch (e) {
@@ -68,6 +79,7 @@ async function handleSend() {
       id: `local-assistant-${Date.now()}`,
       conversationId: conversationId.value,
     })
+    await refreshConversations()
     emit('done')
   } catch (e) {
     error.value = e.message || 'Belong 暂时没有回应，请稍后再试。'
@@ -84,6 +96,33 @@ function startNewChat() {
   error.value = ''
   messageInput.value = ''
   nextTick(resizeComposer)
+}
+
+async function openConversation(id) {
+  if (!id || id === conversationId.value) return
+
+  historyLoading.value = true
+  error.value = ''
+  try {
+    conversationId.value = id
+    const data = await fetchConversationMessages(id)
+    messages.value = data.map(toViewMessage)
+    await nextTick()
+    scrollToBottom()
+  } catch (e) {
+    error.value = e.message || '历史会话读取失败。'
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+async function refreshConversations() {
+  try {
+    const data = await fetchChatConversations(20)
+    conversations.value = data.map(toConversationSummary)
+  } catch {
+    // Sending already succeeded; keep the current chat visible if list refresh fails.
+  }
 }
 
 function scrollToBottom() {
@@ -124,6 +163,22 @@ function toViewMessage(message) {
   }
 }
 
+function toConversationSummary(conversation) {
+  const normalized = normalizeResult(conversation)
+  return {
+    conversationId: normalized.conversationId,
+    title: truncateText(normalized.title || normalized.lastMessage || '未命名会话', 28),
+    lastMessage: truncateText(normalized.lastMessage || '', 42),
+    updatedAt: normalized.updatedAt,
+    messageCount: normalized.messageCount || 0,
+  }
+}
+
+function truncateText(value, maxLength) {
+  if (!value || value.length <= maxLength) return value || ''
+  return `${value.slice(0, maxLength)}...`
+}
+
 function parseSuggestedActions(value) {
   if (!value) return []
   if (Array.isArray(value)) return value
@@ -139,15 +194,12 @@ function parseSuggestedActions(value) {
 <template>
   <div class="chat-view">
     <header class="view-header">
-      <div>
+      <div class="conversation-heading">
         <div class="status-pill">
           <span></span>
           Belong is ready
         </div>
         <h1 class="view-title">Talk through the problem.</h1>
-        <p class="view-subtitle">
-          Belong gives you a calm place to think out loud, sort the next step, or write something less awkward.
-        </p>
       </div>
       <div class="today-card">
         <span>Today</span>
@@ -156,6 +208,19 @@ function parseSuggestedActions(value) {
           <PlusCircle :size="16" :stroke-width="2" />
           新对话
         </button>
+        <div v-if="conversations.length" class="conversation-list" aria-label="历史会话">
+          <button
+            v-for="conversation in conversations"
+            :key="conversation.conversationId"
+            type="button"
+            class="conversation-item"
+            :class="{ active: conversation.conversationId === conversationId }"
+            @click="openConversation(conversation.conversationId)"
+          >
+            <span>{{ conversation.title }}</span>
+            <small>{{ conversation.lastMessage }}</small>
+          </button>
+        </div>
       </div>
     </header>
 
@@ -207,13 +272,15 @@ function parseSuggestedActions(value) {
         class="message"
         :class="msg.role"
       >
-        <div class="msg-content">{{ msg.content }}</div>
-        <div v-if="msg.suggestedActions && msg.suggestedActions.length" class="suggested-actions">
-          <span
-            v-for="(action, i) in msg.suggestedActions"
-            :key="i"
-            class="action-chip"
-          >{{ action }}</span>
+        <div class="message-body">
+          <div class="msg-content">{{ msg.content }}</div>
+          <div v-if="msg.suggestedActions && msg.suggestedActions.length" class="suggested-actions">
+            <span
+              v-for="(action, i) in msg.suggestedActions"
+              :key="i"
+              class="action-chip"
+            >{{ action }}</span>
+          </div>
         </div>
       </div>
 
@@ -251,20 +318,24 @@ function parseSuggestedActions(value) {
 
 <style scoped>
 .chat-view {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  column-gap: 36px;
   height: 100%;
-  max-width: 1040px;
+  max-width: 1120px;
   margin: 0 auto;
   padding: 28px 36px;
 }
 
 .view-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 220px;
-  gap: 28px;
-  align-items: start;
-  padding-bottom: 28px;
+  display: contents;
+}
+
+.conversation-heading {
+  grid-column: 1;
+  grid-row: 1;
+  padding-bottom: 18px;
 }
 
 .status-pill {
@@ -296,15 +367,13 @@ function parseSuggestedActions(value) {
   letter-spacing: 0;
 }
 
-.view-subtitle {
-  max-width: 680px;
-  margin-top: 8px;
-  color: #718096;
-  font-size: 15px;
-  line-height: 1.65;
-}
-
 .today-card {
+  grid-column: 2;
+  grid-row: 1 / 5;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   padding: 16px;
   border: 1px solid #e1e7ef;
   border-radius: 16px;
@@ -349,12 +418,63 @@ function parseSuggestedActions(value) {
   transform: translateY(-1px);
 }
 
+.conversation-list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #e7edf5;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+}
+
+.conversation-item {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #111827;
+  text-align: left;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.conversation-item:hover,
+.conversation-item.active {
+  border-color: #dbe6f5;
+  background: #ffffff;
+}
+
+.conversation-item span,
+.conversation-item small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-item span {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.conversation-item small {
+  color: #718096;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .empty-board {
+  grid-column: 1;
+  grid-row: 2;
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
   gap: 18px;
   align-content: center;
-  flex: 1;
   padding: 24px 0;
 }
 
@@ -446,36 +566,59 @@ function parseSuggestedActions(value) {
 }
 
 .chat-messages {
-  flex: 0 1 auto;
-  max-height: min(52vh, 520px);
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  width: 100%;
   min-height: 0;
   overflow-y: auto;
-  border: 1px solid #e1e7ef;
-  border-radius: 18px;
-  background: #ffffff;
-  padding: 24px;
-  margin: 10px 0 22px;
+  padding: 24px 0 22px;
+  margin: 0;
 }
 
 .message {
-  margin-bottom: 16px;
-  max-width: 85%;
+  display: flex;
+  width: 100%;
+  margin-bottom: 14px;
 }
 
 .message.user {
-  margin-left: auto;
+  justify-content: flex-end;
+}
+
+.message.assistant {
+  justify-content: flex-start;
+}
+
+.message-body {
+  display: grid;
+  justify-items: start;
+  max-width: min(76%, 720px);
+}
+
+.message.user .message-body {
+  justify-items: end;
+  max-width: min(70%, 640px);
 }
 
 .message.user .msg-content {
+  width: fit-content;
+  max-width: 100%;
   background: #2563eb;
   color: #fff;
   border-radius: 14px 14px 4px 14px;
-  padding: 10px 16px;
+  padding: 10px 15px;
   font-size: 14px;
   line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .message.assistant .msg-content {
+  width: fit-content;
+  max-width: 100%;
   background: #f7f9fc;
   color: #374151;
   border: 1px solid #eef2f7;
@@ -483,6 +626,8 @@ function parseSuggestedActions(value) {
   padding: 12px 16px;
   font-size: 14px;
   line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .suggested-actions {
@@ -525,14 +670,19 @@ function parseSuggestedActions(value) {
 }
 
 .chat-error {
+  grid-column: 1;
+  grid-row: 3;
   margin: 0 0 12px;
 }
 
 .chat-composer {
+  grid-column: 1;
+  grid-row: 4;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 58px;
   align-items: flex-end;
   gap: 12px;
+  width: 100%;
   padding-top: 18px;
   border-top: 1px solid #e1e7ef;
 }
@@ -585,16 +735,50 @@ function parseSuggestedActions(value) {
 
 @media (max-width: 920px) {
   .chat-view {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto;
     padding: 24px;
   }
 
-  .view-header,
+  .conversation-heading {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .today-card {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: auto;
+    margin-bottom: 18px;
+  }
+
+  .empty-board,
+  .chat-messages {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .chat-error {
+    grid-column: 1;
+    grid-row: 4;
+  }
+
+  .chat-composer {
+    grid-column: 1;
+    grid-row: 5;
+  }
+
+  .chat-messages {
+    padding-top: 12px;
+  }
+
   .empty-board {
     grid-template-columns: 1fr;
   }
 
-  .chat-messages {
-    max-height: 46vh;
+  .message-body,
+  .message.user .message-body {
+    max-width: 86%;
   }
 }
 </style>
