@@ -1,0 +1,26 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: Belong
+  datasource:
+    url: jdbc:mysql://localhost:3306/belong?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: ${BELONG_DB_USERNAME:root}
+    password: ${BELONG_DB_PASSWORD:321203}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+
+belong:
+  demo-user-id: demo-user
+  dify:
+    base-url: https://api.dify.ai/v1
+    connect-timeout-ms: 5000
+    read-timeout-ms: 180000
+    chat-api-key: ${BELONG_DIFY_CHAT_API_KEY}
+    organize-api-key: ${BELONG_DIFY_ORGANIZE_API_KEY}
+    plan-api-key: ${BELONG_DIFY_PLAN_API_KEY}
+    memory-api-key: ${BELONG_DIFY_MEMORY_API_KEY}

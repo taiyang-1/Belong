@@ -1,0 +1,18 @@
+CREATE DATABASE IF NOT EXISTS belong DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+USE belong;
+
+CREATE TABLE IF NOT EXISTS memories (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id VARCHAR(64) NOT NULL,
+    type VARCHAR(32) NOT NULL,
+    content TEXT NOT NULL,
+    confidence DECIMAL(3,2),
+    sensitivity VARCHAR(16),
+    expires_at DATETIME NULL,
+    source VARCHAR(32),
+    reason TEXT,
+    is_archived BOOLEAN DEFAULT FALSE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
