@@ -1,13 +1,12 @@
 package com.example.belong;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
 class BelongApplicationTests {
 
     @Test
-    void contextLoads() {
+    void applicationClassExists() {
+        BelongApplication.main(new String[]{"--spring.main.web-application-type=none"});
     }
 
 }

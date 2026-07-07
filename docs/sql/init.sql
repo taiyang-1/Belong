@@ -16,3 +16,15 @@ CREATE TABLE IF NOT EXISTS memories (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id VARCHAR(64) NOT NULL,
+    conversation_id VARCHAR(64) NOT NULL,
+    role VARCHAR(16) NOT NULL,
+    content TEXT NOT NULL,
+    suggested_actions JSON NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_chat_messages_user_created (user_id, created_at),
+    INDEX idx_chat_messages_conversation (conversation_id, created_at)
+);

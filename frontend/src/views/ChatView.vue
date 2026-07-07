@@ -1,7 +1,7 @@
 <script setup>
-import { ref, nextTick } from 'vue'
-import { Send, MessageSquare } from '@lucide/vue'
-import { sendMessage } from '../api/chatApi.js'
+import { ref, onMounted, nextTick } from 'vue'
+import { PlusCircle, Send, MessageSquare } from '@lucide/vue'
+import { fetchChatMessages, sendMessage } from '../api/chatApi.js'
 import { normalizeResult } from '../utils/normalizeResult.js'
 import StatusMessage from '../components/common/StatusMessage.vue'
 
@@ -9,10 +9,32 @@ const emit = defineEmits(['done'])
 
 const messageInput = ref('')
 const loading = ref(false)
+const historyLoading = ref(false)
 const error = ref('')
 const messages = ref([])
+const conversationId = ref(createConversationId())
+const composerRef = ref(null)
 
 const profileContext = '用户喜欢温和、具体、低压力、不要太鸡血的建议。'
+
+onMounted(() => {
+  loadLatestMessages()
+})
+
+async function loadLatestMessages() {
+  historyLoading.value = true
+  error.value = ''
+  try {
+    const data = await fetchChatMessages(20)
+    messages.value = data.map(toViewMessage)
+    await nextTick()
+    scrollToBottom()
+  } catch (e) {
+    error.value = e.message || '最近聊天记录读取失败。'
+  } finally {
+    historyLoading.value = false
+  }
+}
 
 async function handleSend() {
   const text = messageInput.value.trim()
@@ -20,12 +42,21 @@ async function handleSend() {
 
   error.value = ''
 
-  messages.value.push({ role: 'user', content: text, id: Date.now() })
+  messages.value.push({
+    role: 'user',
+    content: text,
+    id: `local-user-${Date.now()}`,
+    conversationId: conversationId.value,
+  })
   messageInput.value = ''
+  await nextTick()
+  resizeComposer()
+  scrollToBottom()
 
   loading.value = true
   try {
     const data = await sendMessage({
+      conversationId: conversationId.value,
       message: text,
       profileContext,
     })
@@ -34,7 +65,8 @@ async function handleSend() {
       role: 'assistant',
       content: result.reply || '',
       suggestedActions: result.suggestedActions || [],
-      id: Date.now() + 1,
+      id: `local-assistant-${Date.now()}`,
+      conversationId: conversationId.value,
     })
     emit('done')
   } catch (e) {
@@ -46,15 +78,60 @@ async function handleSend() {
   }
 }
 
+function startNewChat() {
+  conversationId.value = createConversationId()
+  messages.value = []
+  error.value = ''
+  messageInput.value = ''
+  nextTick(resizeComposer)
+}
+
 function scrollToBottom() {
   const el = document.querySelector('.chat-messages')
   if (el) el.scrollTop = el.scrollHeight
+}
+
+function resizeComposer() {
+  const el = composerRef.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${Math.min(el.scrollHeight, 140)}px`
 }
 
 function handleKeydown(e) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
     handleSend()
+  }
+}
+
+function createConversationId() {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID()
+  }
+  return `conv-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function toViewMessage(message) {
+  const normalized = normalizeResult(message)
+  return {
+    id: normalized.id || `${normalized.role}-${normalized.createdAt || Date.now()}`,
+    role: normalized.role,
+    content: normalized.content || '',
+    suggestedActions: parseSuggestedActions(normalized.suggestedActions),
+    conversationId: normalized.conversationId,
+    createdAt: normalized.createdAt,
+  }
+}
+
+function parseSuggestedActions(value) {
+  if (!value) return []
+  if (Array.isArray(value)) return value
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
   }
 }
 </script>
@@ -75,10 +152,22 @@ function handleKeydown(e) {
       <div class="today-card">
         <span>Today</span>
         <strong>Low pressure</strong>
+        <button type="button" class="new-chat-button" @click="startNewChat">
+          <PlusCircle :size="16" :stroke-width="2" />
+          新对话
+        </button>
       </div>
     </header>
 
-    <section v-if="!messages.length" class="empty-board">
+    <section v-if="historyLoading" class="empty-board loading-board">
+      <div class="hero-panel loading-panel">
+        <div class="typing-indicator">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+    </section>
+
+    <section v-else-if="!messages.length" class="empty-board">
       <div class="hero-panel">
         <div class="panel-icon">
           <MessageSquare :size="22" :stroke-width="1.6" />
@@ -139,11 +228,13 @@ function handleKeydown(e) {
 
     <div class="chat-composer">
       <textarea
+        ref="composerRef"
         v-model="messageInput"
         class="composer-input"
         placeholder="Say something..."
-        rows="2"
+        rows="1"
         :disabled="loading"
+        @input="resizeComposer"
         @keydown="handleKeydown"
       ></textarea>
       <button
@@ -235,6 +326,29 @@ function handleKeydown(e) {
   line-height: 1.2;
 }
 
+.new-chat-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 36px;
+  margin-top: 14px;
+  border: 1px solid #dce5f1;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 700;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.new-chat-button:hover {
+  border-color: #bfdbfe;
+  background: #eef4ff;
+  transform: translateY(-1px);
+}
+
 .empty-board {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
@@ -242,6 +356,17 @@ function handleKeydown(e) {
   align-content: center;
   flex: 1;
   padding: 24px 0;
+}
+
+.loading-board {
+  grid-template-columns: 1fr;
+  align-content: start;
+}
+
+.loading-panel {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
 }
 
 .hero-panel,
@@ -423,6 +548,8 @@ function handleKeydown(e) {
   color: #111827;
   font-size: 15px;
   outline: none;
+  resize: none;
+  overflow-y: auto;
   transition: border-color 0.15s, box-shadow 0.15s;
   line-height: 1.5;
   box-shadow: 0 10px 28px rgba(23, 32, 51, 0.05);

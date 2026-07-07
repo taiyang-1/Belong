@@ -21,6 +21,7 @@ public class BelongAiService {
     private final BelongProperties belongProperties;
     private final DifyService difyService;
     private final MemoryService memoryService;
+    private final ChatMessageService chatMessageService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -58,17 +59,27 @@ public class BelongAiService {
     /**
      * Chat flow: see processChat below.
      */
-    public BelongResponse processChat(String message, String profileContext, String recentContext) {
+    public BelongResponse processChat(String conversationId, String message,
+                                      String profileContext, String recentContext) {
         String userId = belongProperties.getDemoUserId();
         String memoryContext = memoryService.buildMemoryContext(userId);
+        String activeConversationId = (conversationId == null || conversationId.isBlank())
+                ? UUID.randomUUID().toString()
+                : conversationId;
+        String activeRecentContext = (recentContext == null || recentContext.isBlank())
+                ? chatMessageService.buildRecentContext(userId, 20)
+                : recentContext;
 
         Map<String, Object> inputs = new LinkedHashMap<>();
         inputs.put("memory_context", memoryContext);
         inputs.put("profile_context", profileContext);
-        inputs.put("recent_context", recentContext);
+        inputs.put("recent_context", activeRecentContext);
 
         String apiKey = belongProperties.getDify().getChatApiKey();
         JsonNode chatResult = difyService.callChatflow(apiKey, inputs, message, userId);
+
+        chatMessageService.saveMessage(userId, activeConversationId, "user", message, null);
+        saveAssistantChatMessage(userId, activeConversationId, chatResult);
 
         List<Memory> savedMemories = extractAndSaveMemories(chatResult, userId);
 
@@ -76,6 +87,25 @@ public class BelongAiService {
         response.setResult(chatResult);
         response.setSavedMemories(new ArrayList<>(savedMemories));
         return response;
+    }
+
+    private void saveAssistantChatMessage(String userId, String conversationId, JsonNode chatResult) {
+        if (chatResult == null) {
+            return;
+        }
+
+        String reply = chatResult.has("reply") ? chatResult.get("reply").asText() : chatResult.asText("");
+        if (reply == null || reply.isBlank()) {
+            return;
+        }
+
+        String suggestedActions = null;
+        JsonNode suggestedActionsNode = chatResult.get("suggested_actions");
+        if (suggestedActionsNode != null && suggestedActionsNode.isArray()) {
+            suggestedActions = suggestedActionsNode.toString();
+        }
+
+        chatMessageService.saveMessage(userId, conversationId, "assistant", reply, suggestedActions);
     }
 
     /**
