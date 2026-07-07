@@ -2,6 +2,7 @@ package com.example.belong.service;
 
 import com.example.belong.entity.ChatMessage;
 import com.example.belong.mapper.ChatMessageMapper;
+import com.example.belong.dto.ChatConversationSummary;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -47,6 +48,32 @@ class ChatMessageServiceTest {
         assertThat(messages).extracting(ChatMessage::getContent).containsExactly("第一条", "第二条");
     }
 
+    @Test
+    void getConversationSummariesReturnsRecentConversations() {
+        ChatConversationSummary recent = conversation("conv-2", "今天中午吃什么", "可以吃清淡一点。", 2);
+        ChatConversationSummary older = conversation("conv-1", "昨天聊学习", "先做 30 分钟。", 4);
+        chatMessageMapper.conversations = List.of(recent, older);
+
+        List<ChatConversationSummary> conversations = chatMessageService.getConversationSummaries("demo-user", 20);
+
+        assertThat(conversations).extracting(ChatConversationSummary::getConversationId)
+                .containsExactly("conv-2", "conv-1");
+    }
+
+    @Test
+    void getConversationMessagesReturnsOnlySelectedConversationInConversationOrder() {
+        ChatMessage first = message(1L, "user", "今天中午吃什么");
+        first.setConversationId("conv-2");
+        ChatMessage second = message(2L, "assistant", "可以吃清淡一点。");
+        second.setConversationId("conv-2");
+        chatMessageMapper.conversationMessages = List.of(first, second);
+
+        List<ChatMessage> messages = chatMessageService.getConversationMessages("demo-user", "conv-2");
+
+        assertThat(messages).extracting(ChatMessage::getContent)
+                .containsExactly("今天中午吃什么", "可以吃清淡一点。");
+    }
+
     private ChatMessage message(Long id, String role, String content) {
         ChatMessage message = new ChatMessage();
         message.setId(id);
@@ -58,8 +85,20 @@ class ChatMessageServiceTest {
         return message;
     }
 
+    private ChatConversationSummary conversation(String conversationId, String title, String lastMessage, int messageCount) {
+        ChatConversationSummary conversation = new ChatConversationSummary();
+        conversation.setConversationId(conversationId);
+        conversation.setTitle(title);
+        conversation.setLastMessage(lastMessage);
+        conversation.setUpdatedAt(LocalDateTime.now());
+        conversation.setMessageCount(messageCount);
+        return conversation;
+    }
+
     private static class FakeChatMessageMapper implements ChatMessageMapper {
         private List<ChatMessage> latest = new ArrayList<>();
+        private List<ChatConversationSummary> conversations = new ArrayList<>();
+        private List<ChatMessage> conversationMessages = new ArrayList<>();
 
         @Override
         public List<ChatMessage> findLatestByUserId(String userId, int limit) {
@@ -70,6 +109,18 @@ class ChatMessageServiceTest {
         public int insert(ChatMessage chatMessage) {
             latest.add(0, chatMessage);
             return 1;
+        }
+
+        @Override
+        public List<ChatConversationSummary> findRecentConversationsByUserId(String userId, int limit) {
+            return conversations.stream().limit(limit).toList();
+        }
+
+        @Override
+        public List<ChatMessage> findByUserIdAndConversationId(String userId, String conversationId) {
+            return conversationMessages.stream()
+                    .filter(message -> conversationId.equals(message.getConversationId()))
+                    .toList();
         }
     }
 }

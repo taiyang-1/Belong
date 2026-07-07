@@ -1,5 +1,11 @@
 HELP.md
 target/
+frontend/node_modules/
+frontend/.vite/
+frontend/*.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
