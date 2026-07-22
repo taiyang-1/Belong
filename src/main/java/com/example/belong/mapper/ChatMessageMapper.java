@@ -65,4 +65,13 @@ public interface ChatMessageMapper {
             "VALUES(#{userId}, #{conversationId}, #{role}, #{content}, #{suggestedActions}, NOW())")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(ChatMessage chatMessage);
+
+    @Delete("""
+            DELETE FROM chat_messages
+            WHERE user_id = #{userId} AND conversation_id = #{conversationId}
+            """)
+    int deleteByUserIdAndConversationId(
+            @Param("userId") String userId,
+            @Param("conversationId") String conversationId
+    );
 }

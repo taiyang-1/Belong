@@ -33,6 +33,13 @@ public class ChatMessageService {
         return chatMessageMapper.findByUserIdAndConversationId(userId, conversationId);
     }
 
+    public int deleteConversation(String userId, String conversationId) {
+        if (conversationId == null || conversationId.isBlank()) {
+            return 0;
+        }
+        return chatMessageMapper.deleteByUserIdAndConversationId(userId, conversationId);
+    }
+
     public String buildRecentContext(String userId, Integer limit) {
         List<ChatMessage> latest = getLatestMessages(userId, limit);
         if (latest.isEmpty()) {

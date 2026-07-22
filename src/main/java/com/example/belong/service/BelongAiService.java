@@ -2,6 +2,7 @@ package com.example.belong.service;
 
 import com.example.belong.config.BelongProperties;
 import com.example.belong.dto.BelongResponse;
+import com.example.belong.dto.ChatStreamContext;
 import com.example.belong.entity.Memory;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -62,24 +63,13 @@ public class BelongAiService {
     public BelongResponse processChat(String conversationId, String message,
                                       String profileContext, String recentContext) {
         String userId = belongProperties.getDemoUserId();
-        String memoryContext = memoryService.buildMemoryContext(userId);
-        String activeConversationId = (conversationId == null || conversationId.isBlank())
-                ? UUID.randomUUID().toString()
-                : conversationId;
-        String activeRecentContext = (recentContext == null || recentContext.isBlank())
-                ? chatMessageService.buildRecentContext(userId, 20)
-                : recentContext;
-
-        Map<String, Object> inputs = new LinkedHashMap<>();
-        inputs.put("memory_context", memoryContext);
-        inputs.put("profile_context", profileContext);
-        inputs.put("recent_context", activeRecentContext);
+        ChatContext chatContext = buildChatContext(userId, conversationId, profileContext, recentContext);
 
         String apiKey = belongProperties.getDify().getChatApiKey();
-        JsonNode chatResult = difyService.callChatflow(apiKey, inputs, message, userId);
+        JsonNode chatResult = difyService.callChatflow(apiKey, chatContext.inputs(), message, userId);
 
-        chatMessageService.saveMessage(userId, activeConversationId, "user", message, null);
-        saveAssistantChatMessage(userId, activeConversationId, chatResult);
+        chatMessageService.saveMessage(userId, chatContext.conversationId(), "user", message, null);
+        saveAssistantChatMessage(userId, chatContext.conversationId(), chatResult);
 
         List<Memory> savedMemories = extractAndSaveMemories(chatResult, userId);
 
@@ -89,7 +79,35 @@ public class BelongAiService {
         return response;
     }
 
-    private void saveAssistantChatMessage(String userId, String conversationId, JsonNode chatResult) {
+    public ChatStreamContext buildStreamChatContext(String conversationId, String message,
+                                                    String profileContext, String recentContext) {
+        String userId = belongProperties.getDemoUserId();
+        ChatContext chatContext = buildChatContext(userId, conversationId, profileContext, recentContext);
+        return new ChatStreamContext(
+                userId,
+                chatContext.conversationId(),
+                message,
+                chatContext.inputs(),
+                belongProperties.getDify().getChatApiKey()
+        );
+    }
+
+    private ChatContext buildChatContext(String userId, String conversationId,
+                                         String profileContext, String recentContext) {
+        String memoryContext = memoryService.buildMemoryContext(userId);
+        String activeConversationId = (conversationId == null || conversationId.isBlank())
+                ? UUID.randomUUID().toString()
+                : conversationId;
+
+        Map<String, Object> inputs = new LinkedHashMap<>();
+        inputs.put("memory_context", memoryContext);
+        return new ChatContext(activeConversationId, inputs);
+    }
+
+    private record ChatContext(String conversationId, Map<String, Object> inputs) {
+    }
+
+    public void saveAssistantChatMessage(String userId, String conversationId, JsonNode chatResult) {
         if (chatResult == null) {
             return;
         }
@@ -140,7 +158,7 @@ public class BelongAiService {
      * Extract memory_event from Dify result, call Memory Extract, and save memories.
      * If memory extraction fails, log and return empty list — never block user-facing flow.
      */
-    private List<Memory> extractAndSaveMemories(JsonNode flowResult, String userId) {
+    public List<Memory> extractAndSaveMemories(JsonNode flowResult, String userId) {
         try {
             JsonNode memoryEvent = flowResult != null ? flowResult.get("memory_event") : null;
             if (memoryEvent == null || memoryEvent.isNull()) {
