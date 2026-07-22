@@ -1,7 +1,13 @@
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
-import { PlusCircle, Send, MessageSquare } from '@lucide/vue'
-import { fetchChatConversations, fetchChatMessages, fetchConversationMessages, sendMessage } from '../api/chatApi.js'
+import { PlusCircle, Send, MessageSquare, Trash2 } from '@lucide/vue'
+import {
+  deleteChatConversation,
+  fetchChatConversations,
+  fetchChatMessages,
+  fetchConversationMessages,
+  streamMessage,
+} from '../api/chatApi.js'
 import { normalizeResult } from '../utils/normalizeResult.js'
 import StatusMessage from '../components/common/StatusMessage.vue'
 
@@ -66,21 +72,46 @@ async function handleSend() {
 
   loading.value = true
   try {
-    const data = await sendMessage({
+    let streamError = null
+    const assistantMessage = {
+      role: 'assistant',
+      content: '',
+      suggestedActions: [],
+      id: `local-assistant-${Date.now()}`,
+      conversationId: conversationId.value,
+    }
+    messages.value.push(assistantMessage)
+    await nextTick()
+    scrollToBottom()
+
+    await streamMessage({
       conversationId: conversationId.value,
       message: text,
       profileContext,
+    }, {
+      onMessage: async (chunk) => {
+        if (!chunk || !chunk.trim()) return
+        assistantMessage.content += chunk
+        await nextTick()
+        scrollToBottom()
+      },
+      onDone: async (data) => {
+        const result = normalizeResult(data.result || {})
+        const reply = typeof result.reply === 'string' ? result.reply.trim() : ''
+        if (!assistantMessage.content && reply) {
+          assistantMessage.content = reply
+        }
+        assistantMessage.suggestedActions = result.suggestedActions || []
+        await refreshConversations()
+        emit('done')
+      },
+      onError: (message) => {
+        streamError = new Error(message || 'Belong 暂时没有回应，请稍后再试。')
+      },
     })
-    const result = normalizeResult(data.result || {})
-    messages.value.push({
-      role: 'assistant',
-      content: result.reply || '',
-      suggestedActions: result.suggestedActions || [],
-      id: `local-assistant-${Date.now()}`,
-      conversationId: conversationId.value,
-    })
-    await refreshConversations()
-    emit('done')
+    if (streamError) {
+      throw streamError
+    }
   } catch (e) {
     error.value = e.message || 'Belong 暂时没有回应，请稍后再试。'
   } finally {
@@ -111,6 +142,37 @@ async function openConversation(id) {
     scrollToBottom()
   } catch (e) {
     error.value = e.message || '历史会话读取失败。'
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+async function deleteConversation(conversation, event) {
+  event.stopPropagation()
+  if (!conversation?.conversationId || loading.value || historyLoading.value) return
+
+  const confirmed = window.confirm(`确定删除「${conversation.title}」这段会话吗？删除后无法恢复。`)
+  if (!confirmed) return
+
+  historyLoading.value = true
+  error.value = ''
+  try {
+    await deleteChatConversation(conversation.conversationId)
+    conversations.value = conversations.value.filter(
+      (item) => item.conversationId !== conversation.conversationId,
+    )
+
+    if (conversation.conversationId === conversationId.value) {
+      if (conversations.value.length) {
+        conversationId.value = conversations.value[0].conversationId
+        const data = await fetchConversationMessages(conversationId.value)
+        messages.value = data.map(toViewMessage)
+      } else {
+        startNewChat()
+      }
+    }
+  } catch (e) {
+    error.value = e.message || '会话删除失败，请稍后再试。'
   } finally {
     historyLoading.value = false
   }
@@ -209,17 +271,30 @@ function parseSuggestedActions(value) {
           新对话
         </button>
         <div v-if="conversations.length" class="conversation-list" aria-label="历史会话">
-          <button
+          <div
             v-for="conversation in conversations"
             :key="conversation.conversationId"
-            type="button"
-            class="conversation-item"
+            class="conversation-row"
             :class="{ active: conversation.conversationId === conversationId }"
-            @click="openConversation(conversation.conversationId)"
           >
-            <span>{{ conversation.title }}</span>
-            <small>{{ conversation.lastMessage }}</small>
-          </button>
+            <button
+              type="button"
+              class="conversation-item"
+              @click="openConversation(conversation.conversationId)"
+            >
+              <span class="conversation-title">{{ conversation.title }}</span>
+              <small>{{ conversation.lastMessage }}</small>
+            </button>
+            <button
+              type="button"
+              class="delete-conversation-button"
+              aria-label="删除会话"
+              title="删除会话"
+              @click="deleteConversation(conversation, $event)"
+            >
+              <Trash2 :size="14" :stroke-width="1.8" />
+            </button>
+          </div>
         </div>
       </div>
     </header>
@@ -281,12 +356,6 @@ function parseSuggestedActions(value) {
               class="action-chip"
             >{{ action }}</span>
           </div>
-        </div>
-      </div>
-
-      <div v-if="loading" class="message assistant">
-        <div class="typing-indicator">
-          <span></span><span></span><span></span>
         </div>
       </div>
     </div>
@@ -430,23 +499,49 @@ function parseSuggestedActions(value) {
   overflow-y: auto;
 }
 
-.conversation-item {
+.conversation-row {
   display: grid;
-  gap: 3px;
-  width: 100%;
-  padding: 10px 11px;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 4px;
   border: 1px solid transparent;
   border-radius: 10px;
-  background: transparent;
-  color: #111827;
-  text-align: left;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.conversation-item:hover,
-.conversation-item.active {
+.conversation-row:hover,
+.conversation-row.active {
   border-color: #dbe6f5;
   background: #ffffff;
+}
+
+.conversation-item {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  width: 100%;
+  padding: 10px 0 10px 11px;
+  border: 0;
+  background: transparent;
+  color: #111827;
+  text-align: left;
+}
+
+.delete-conversation-button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 5px;
+  border-radius: 8px;
+  background: transparent;
+  color: #94a3b8;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.delete-conversation-button:hover {
+  background: #fee2e2;
+  color: #dc2626;
 }
 
 .conversation-item span,
