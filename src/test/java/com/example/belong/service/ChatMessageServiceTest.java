@@ -74,6 +74,23 @@ class ChatMessageServiceTest {
                 .containsExactly("今天中午吃什么", "可以吃清淡一点。");
     }
 
+    @Test
+    void deleteConversationMessagesOnlyRemovesOnlySelectedConversationForUser() {
+        int deleted = chatMessageService.deleteConversationMessagesOnly("demo-user", "conv-2");
+
+        assertThat(deleted).isEqualTo(3);
+        assertThat(chatMessageMapper.deletedUserId).isEqualTo("demo-user");
+        assertThat(chatMessageMapper.deletedConversationId).isEqualTo("conv-2");
+    }
+
+    @Test
+    void deleteConversationMessagesOnlyIgnoresBlankConversationId() {
+        int deleted = chatMessageService.deleteConversationMessagesOnly("demo-user", " ");
+
+        assertThat(deleted).isZero();
+        assertThat(chatMessageMapper.deletedConversationId).isNull();
+    }
+
     private ChatMessage message(Long id, String role, String content) {
         ChatMessage message = new ChatMessage();
         message.setId(id);
@@ -99,6 +116,8 @@ class ChatMessageServiceTest {
         private List<ChatMessage> latest = new ArrayList<>();
         private List<ChatConversationSummary> conversations = new ArrayList<>();
         private List<ChatMessage> conversationMessages = new ArrayList<>();
+        private String deletedUserId;
+        private String deletedConversationId;
 
         @Override
         public List<ChatMessage> findLatestByUserId(String userId, int limit) {
@@ -121,6 +140,13 @@ class ChatMessageServiceTest {
             return conversationMessages.stream()
                     .filter(message -> conversationId.equals(message.getConversationId()))
                     .toList();
+        }
+
+        @Override
+        public int deleteByUserIdAndConversationId(String userId, String conversationId) {
+            deletedUserId = userId;
+            deletedConversationId = conversationId;
+            return 3;
         }
     }
 }

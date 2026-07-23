@@ -45,4 +45,9 @@ public class ChatController {
     public List<ChatMessage> conversationMessages(@PathVariable String conversationId) {
         return chatMessageService.getConversationMessages(belongProperties.getDemoUserId(), conversationId);
     }
+
+    @DeleteMapping("/chat/conversations/{conversationId}")
+    public void deleteConversation(@PathVariable String conversationId) {
+        chatMessageService.deleteConversationMessagesOnly(belongProperties.getDemoUserId(), conversationId);
+    }
 }

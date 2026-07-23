@@ -37,3 +37,9 @@ build/
 
 ### VS Code ###
 .vscode/
+# 依赖目录
+node_modules/
+# vite缓存
+**/.vite/
+
+frontend/node_modules/

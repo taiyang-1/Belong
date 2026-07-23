@@ -33,6 +33,17 @@ public class ChatMessageService {
         return chatMessageMapper.findByUserIdAndConversationId(userId, conversationId);
     }
 
+    /**
+     * Deletes only the chat transcript for a conversation.
+     * Long-term memories are managed separately by MemoryService and must not be removed here.
+     */
+    public int deleteConversationMessagesOnly(String userId, String conversationId) {
+        if (conversationId == null || conversationId.isBlank()) {
+            return 0;
+        }
+        return chatMessageMapper.deleteByUserIdAndConversationId(userId, conversationId);
+    }
+
     public String buildRecentContext(String userId, Integer limit) {
         List<ChatMessage> latest = getLatestMessages(userId, limit);
         if (latest.isEmpty()) {

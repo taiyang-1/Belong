@@ -22,3 +22,7 @@ export function fetchChatConversations(limit = 20) {
 export function fetchConversationMessages(conversationId) {
   return http.get(`/api/chat/conversations/${conversationId}/messages`).then((res) => res.data)
 }
+
+export function deleteChatConversation(conversationId) {
+  return http.delete(`/api/chat/conversations/${conversationId}`)
+}

@@ -1,7 +1,13 @@
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
 import { PlusCircle, Send, MessageSquare } from '@lucide/vue'
-import { fetchChatConversations, fetchChatMessages, fetchConversationMessages, sendMessage } from '../api/chatApi.js'
+import {
+  deleteChatConversation,
+  fetchChatConversations,
+  fetchChatMessages,
+  fetchConversationMessages,
+  sendMessage,
+} from '../api/chatApi.js'
 import { normalizeResult } from '../utils/normalizeResult.js'
 import StatusMessage from '../components/common/StatusMessage.vue'
 
@@ -116,6 +122,37 @@ async function openConversation(id) {
   }
 }
 
+async function deleteConversation(conversation, event) {
+  event.stopPropagation()
+  if (!conversation?.conversationId || loading.value || historyLoading.value) return
+
+  const confirmed = window.confirm(`确定删除「${conversation.title}」这段会话吗？删除后无法恢复。`)
+  if (!confirmed) return
+
+  historyLoading.value = true
+  error.value = ''
+  try {
+    await deleteChatConversation(conversation.conversationId)
+    conversations.value = conversations.value.filter(
+      (item) => item.conversationId !== conversation.conversationId,
+    )
+
+    if (conversation.conversationId === conversationId.value) {
+      if (conversations.value.length) {
+        conversationId.value = conversations.value[0].conversationId
+        const data = await fetchConversationMessages(conversationId.value)
+        messages.value = data.map(toViewMessage)
+      } else {
+        startNewChat()
+      }
+    }
+  } catch (e) {
+    error.value = e.message || '会话删除失败，请稍后再试。'
+  } finally {
+    historyLoading.value = false
+  }
+}
+
 async function refreshConversations() {
   try {
     const data = await fetchChatConversations(20)
@@ -209,17 +246,30 @@ function parseSuggestedActions(value) {
           新对话
         </button>
         <div v-if="conversations.length" class="conversation-list" aria-label="历史会话">
-          <button
+          <div
             v-for="conversation in conversations"
             :key="conversation.conversationId"
-            type="button"
-            class="conversation-item"
+            class="conversation-row"
             :class="{ active: conversation.conversationId === conversationId }"
-            @click="openConversation(conversation.conversationId)"
           >
-            <span>{{ conversation.title }}</span>
-            <small>{{ conversation.lastMessage }}</small>
-          </button>
+            <button
+              type="button"
+              class="delete-conversation-button"
+              aria-label="删除会话"
+              title="删除会话"
+              @click="deleteConversation(conversation, $event)"
+            >
+              ❌
+            </button>
+            <button
+              type="button"
+              class="conversation-item"
+              @click="openConversation(conversation.conversationId)"
+            >
+              <span>{{ conversation.title }}</span>
+              <small>{{ conversation.lastMessage }}</small>
+            </button>
+          </div>
         </div>
       </div>
     </header>
@@ -430,23 +480,53 @@ function parseSuggestedActions(value) {
   overflow-y: auto;
 }
 
-.conversation-item {
-  display: grid;
-  gap: 3px;
-  width: 100%;
-  padding: 10px 11px;
+.conversation-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   border: 1px solid transparent;
   border-radius: 10px;
-  background: transparent;
-  color: #111827;
-  text-align: left;
+  padding: 4px 8px 4px 4px;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.conversation-item:hover,
-.conversation-item.active {
+.conversation-row:hover,
+.conversation-row.active {
   border-color: #dbe6f5;
   background: #ffffff;
+}
+
+.conversation-item {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+  width: 100%;
+  padding: 7px 3px;
+  border: 0;
+  background: transparent;
+  color: #111827;
+  text-align: left;
+}
+
+.delete-conversation-button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  border-radius: 999px;
+  background: #fff1f2;
+  font-size: 12px;
+  line-height: 1;
+  opacity: 1;
+  box-shadow: 0 0 0 1px #fecdd3;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.delete-conversation-button:hover {
+  background: #ffe4e6;
+  transform: scale(1.06);
 }
 
 .conversation-item span,
