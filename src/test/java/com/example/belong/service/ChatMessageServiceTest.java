@@ -75,8 +75,8 @@ class ChatMessageServiceTest {
     }
 
     @Test
-    void deleteConversationMessagesOnlyRemovesOnlySelectedConversationForUser() {
-        int deleted = chatMessageService.deleteConversationMessagesOnly("demo-user", "conv-2");
+    void deleteConversationRemovesOnlySelectedConversationForUser() {
+        int deleted = chatMessageService.deleteConversation("demo-user", "conv-2");
 
         assertThat(deleted).isEqualTo(3);
         assertThat(chatMessageMapper.deletedUserId).isEqualTo("demo-user");
@@ -84,8 +84,8 @@ class ChatMessageServiceTest {
     }
 
     @Test
-    void deleteConversationMessagesOnlyIgnoresBlankConversationId() {
-        int deleted = chatMessageService.deleteConversationMessagesOnly("demo-user", " ");
+    void deleteConversationIgnoresBlankConversationId() {
+        int deleted = chatMessageService.deleteConversation("demo-user", " ");
 
         assertThat(deleted).isZero();
         assertThat(chatMessageMapper.deletedConversationId).isNull();

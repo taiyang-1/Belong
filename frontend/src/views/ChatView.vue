@@ -1,12 +1,12 @@
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
-import { PlusCircle, Send, MessageSquare } from '@lucide/vue'
+import { PlusCircle, Send, MessageSquare, Trash2 } from '@lucide/vue'
 import {
   deleteChatConversation,
   fetchChatConversations,
   fetchChatMessages,
   fetchConversationMessages,
-  sendMessage,
+  streamMessage,
 } from '../api/chatApi.js'
 import { normalizeResult } from '../utils/normalizeResult.js'
 import StatusMessage from '../components/common/StatusMessage.vue'
@@ -72,21 +72,46 @@ async function handleSend() {
 
   loading.value = true
   try {
-    const data = await sendMessage({
+    let streamError = null
+    const assistantMessage = {
+      role: 'assistant',
+      content: '',
+      suggestedActions: [],
+      id: `local-assistant-${Date.now()}`,
+      conversationId: conversationId.value,
+    }
+    messages.value.push(assistantMessage)
+    await nextTick()
+    scrollToBottom()
+
+    await streamMessage({
       conversationId: conversationId.value,
       message: text,
       profileContext,
+    }, {
+      onMessage: async (chunk) => {
+        if (!chunk || !chunk.trim()) return
+        assistantMessage.content += chunk
+        await nextTick()
+        scrollToBottom()
+      },
+      onDone: async (data) => {
+        const result = normalizeResult(data.result || {})
+        const reply = typeof result.reply === 'string' ? result.reply.trim() : ''
+        if (!assistantMessage.content && reply) {
+          assistantMessage.content = reply
+        }
+        assistantMessage.suggestedActions = result.suggestedActions || []
+        await refreshConversations()
+        emit('done')
+      },
+      onError: (message) => {
+        streamError = new Error(message || 'Belong 暂时没有回应，请稍后再试。')
+      },
     })
-    const result = normalizeResult(data.result || {})
-    messages.value.push({
-      role: 'assistant',
-      content: result.reply || '',
-      suggestedActions: result.suggestedActions || [],
-      id: `local-assistant-${Date.now()}`,
-      conversationId: conversationId.value,
-    })
-    await refreshConversations()
-    emit('done')
+    if (streamError) {
+      throw streamError
+    }
   } catch (e) {
     error.value = e.message || 'Belong 暂时没有回应，请稍后再试。'
   } finally {
@@ -257,7 +282,7 @@ function parseSuggestedActions(value) {
               class="conversation-item"
               @click="openConversation(conversation.conversationId)"
             >
-              <span>{{ conversation.title }}</span>
+              <span class="conversation-title">{{ conversation.title }}</span>
               <small>{{ conversation.lastMessage }}</small>
             </button>
             <button
@@ -267,7 +292,7 @@ function parseSuggestedActions(value) {
               title="删除会话"
               @click="deleteConversation(conversation, $event)"
             >
-              ×
+              <Trash2 :size="14" :stroke-width="1.8" />
             </button>
           </div>
         </div>
@@ -331,12 +356,6 @@ function parseSuggestedActions(value) {
               class="action-chip"
             >{{ action }}</span>
           </div>
-        </div>
-      </div>
-
-      <div v-if="loading" class="message assistant">
-        <div class="typing-indicator">
-          <span></span><span></span><span></span>
         </div>
       </div>
     </div>
@@ -481,8 +500,10 @@ function parseSuggestedActions(value) {
 }
 
 .conversation-row {
-  position: relative;
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 4px;
   border: 1px solid transparent;
   border-radius: 10px;
   transition: background 0.15s ease, border-color 0.15s ease;
@@ -499,7 +520,7 @@ function parseSuggestedActions(value) {
   gap: 3px;
   min-width: 0;
   width: 100%;
-  padding: 10px 38px 10px 11px;
+  padding: 10px 0 10px 11px;
   border: 0;
   background: transparent;
   color: #111827;
@@ -507,32 +528,20 @@ function parseSuggestedActions(value) {
 }
 
 .delete-conversation-button {
-  position: absolute;
-  top: 10px;
-  right: 9px;
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 999px;
+  width: 28px;
+  height: 28px;
+  margin-right: 5px;
+  border-radius: 8px;
   background: transparent;
   color: #94a3b8;
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 1;
-  opacity: 0.42;
-  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
-}
-
-.conversation-row:hover .delete-conversation-button,
-.conversation-row.active .delete-conversation-button {
-  opacity: 0.85;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .delete-conversation-button:hover {
-  background: #f1f5f9;
-  color: #ef4444;
-  opacity: 1;
+  background: #fee2e2;
+  color: #dc2626;
 }
 
 .conversation-item span,

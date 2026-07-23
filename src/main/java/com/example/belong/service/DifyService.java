@@ -1,6 +1,7 @@
 package com.example.belong.service;
 
 import com.example.belong.config.BelongProperties;
+import com.example.belong.dto.DifyStreamResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +10,11 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 @Slf4j
@@ -43,6 +49,47 @@ public class DifyService {
 
         ResponseEntity<String> response = postJson(url, apiKey, body);
         return parseDifyOutput(response.getBody());
+    }
+
+    public DifyStreamResponse openChatflowStream(String apiKey, Map<String, Object> inputs,
+                                                 String query, String user) {
+        String url = belongProperties.getDify().getBaseUrl() + "/chat-messages";
+        Map<String, Object> body = Map.of(
+                "inputs", (Object) inputs,
+                "query", query,
+                "response_mode", "streaming",
+                "user", user
+        );
+
+        try {
+            HttpURLConnection connection = (HttpURLConnection) URI.create(url).toURL().openConnection();
+            connection.setRequestMethod("POST");
+            connection.setDoOutput(true);
+            connection.setConnectTimeout(belongProperties.getDify().getConnectTimeoutMs());
+            connection.setReadTimeout(belongProperties.getDify().getReadTimeoutMs());
+            connection.setRequestProperty("Content-Type", MediaType.APPLICATION_JSON_VALUE);
+            connection.setRequestProperty("Accept", MediaType.TEXT_EVENT_STREAM_VALUE);
+            connection.setRequestProperty("Authorization", "Bearer " + apiKey);
+
+            byte[] payload = objectMapper.writeValueAsBytes(body);
+            connection.setFixedLengthStreamingMode(payload.length);
+            try (OutputStream output = connection.getOutputStream()) {
+                output.write(payload);
+            }
+
+            int status = connection.getResponseCode();
+            InputStream bodyStream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
+            if (status >= 400) {
+                String errorBody = bodyStream == null
+                        ? ""
+                        : new String(bodyStream.readAllBytes(), StandardCharsets.UTF_8);
+                connection.disconnect();
+                throw new IllegalStateException("Dify API 返回错误: " + status + " " + errorBody);
+            }
+            return new DifyStreamResponse(connection, bodyStream);
+        } catch (Exception e) {
+            throw new IllegalStateException("Dify stream request failed: " + e.getMessage(), e);
+        }
     }
 
     /**
