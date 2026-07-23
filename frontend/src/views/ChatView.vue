@@ -254,20 +254,20 @@ function parseSuggestedActions(value) {
           >
             <button
               type="button"
-              class="delete-conversation-button"
-              aria-label="删除会话"
-              title="删除会话"
-              @click="deleteConversation(conversation, $event)"
-            >
-              ❌
-            </button>
-            <button
-              type="button"
               class="conversation-item"
               @click="openConversation(conversation.conversationId)"
             >
               <span>{{ conversation.title }}</span>
               <small>{{ conversation.lastMessage }}</small>
+            </button>
+            <button
+              type="button"
+              class="delete-conversation-button"
+              aria-label="删除会话"
+              title="删除会话"
+              @click="deleteConversation(conversation, $event)"
+            >
+              ×
             </button>
           </div>
         </div>
@@ -481,12 +481,10 @@ function parseSuggestedActions(value) {
 }
 
 .conversation-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  position: relative;
+  display: block;
   border: 1px solid transparent;
   border-radius: 10px;
-  padding: 4px 8px 4px 4px;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
@@ -500,9 +498,8 @@ function parseSuggestedActions(value) {
   display: grid;
   gap: 3px;
   min-width: 0;
-  flex: 1;
   width: 100%;
-  padding: 7px 3px;
+  padding: 10px 38px 10px 11px;
   border: 0;
   background: transparent;
   color: #111827;
@@ -510,23 +507,32 @@ function parseSuggestedActions(value) {
 }
 
 .delete-conversation-button {
+  position: absolute;
+  top: 10px;
+  right: 9px;
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
-  flex: 0 0 24px;
+  width: 20px;
+  height: 20px;
   border-radius: 999px;
-  background: #fff1f2;
-  font-size: 12px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 18px;
+  font-weight: 600;
   line-height: 1;
-  opacity: 1;
-  box-shadow: 0 0 0 1px #fecdd3;
-  transition: background 0.15s ease, transform 0.15s ease;
+  opacity: 0.42;
+  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+.conversation-row:hover .delete-conversation-button,
+.conversation-row.active .delete-conversation-button {
+  opacity: 0.85;
 }
 
 .delete-conversation-button:hover {
-  background: #ffe4e6;
-  transform: scale(1.06);
+  background: #f1f5f9;
+  color: #ef4444;
+  opacity: 1;
 }
 
 .conversation-item span,
