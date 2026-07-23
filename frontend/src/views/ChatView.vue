@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
-import { PlusCircle, Send, MessageSquare, Trash2 } from '@lucide/vue'
+import { PlusCircle, Send, MessageSquare } from '@lucide/vue'
 import {
   deleteChatConversation,
   fetchChatConversations,
@@ -292,7 +292,7 @@ function parseSuggestedActions(value) {
               title="删除会话"
               @click="deleteConversation(conversation, $event)"
             >
-              <Trash2 :size="14" :stroke-width="1.8" />
+              ×
             </button>
           </div>
         </div>
@@ -500,10 +500,8 @@ function parseSuggestedActions(value) {
 }
 
 .conversation-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 30px;
-  align-items: center;
-  gap: 4px;
+  position: relative;
+  display: block;
   border: 1px solid transparent;
   border-radius: 10px;
   transition: background 0.15s ease, border-color 0.15s ease;
@@ -520,7 +518,7 @@ function parseSuggestedActions(value) {
   gap: 3px;
   min-width: 0;
   width: 100%;
-  padding: 10px 0 10px 11px;
+  padding: 10px 38px 10px 11px;
   border: 0;
   background: transparent;
   color: #111827;
@@ -528,20 +526,32 @@ function parseSuggestedActions(value) {
 }
 
 .delete-conversation-button {
+  position: absolute;
+  top: 10px;
+  right: 9px;
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  margin-right: 5px;
-  border-radius: 8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
   background: transparent;
   color: #94a3b8;
-  transition: background 0.15s ease, color 0.15s ease;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+  opacity: 0.42;
+  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+.conversation-row:hover .delete-conversation-button,
+.conversation-row.active .delete-conversation-button {
+  opacity: 0.85;
 }
 
 .delete-conversation-button:hover {
-  background: #fee2e2;
-  color: #dc2626;
+  background: #f1f5f9;
+  color: #ef4444;
+  opacity: 1;
 }
 
 .conversation-item span,
