@@ -71,7 +71,7 @@ public class ChatController {
 
     @DeleteMapping("/chat/conversations/{conversationId}")
     public void deleteConversation(@PathVariable String conversationId) {
-        chatMessageService.deleteConversation(belongProperties.getDemoUserId(), conversationId);
+        chatMessageService.deleteConversationMessagesOnly(belongProperties.getDemoUserId(), conversationId);
     }
 
     private void pipeDifyChatStream(ChatRequest request, SseEmitter emitter) {
